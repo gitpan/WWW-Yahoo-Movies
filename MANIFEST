@@ -1,0 +1,8 @@
+Changes
+lib/WWW/Yahoo/Movies.pm
+Makefile.PL
+MANIFEST
+META.yml			Module meta-data (added by MakeMaker)
+README
+t/1-movie-id.t
+t/2-movie-title.t
