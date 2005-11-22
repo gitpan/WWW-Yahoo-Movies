@@ -1,5 +1,11 @@
 Revision history for Perl extension WWW::Yahoo::Movies.
 
+0.02 November 24 2005
+	- added possibility to specify a timeout for HTTP request;
+	- added possibility to specify an user agent for HTTP request;
+	- converted movie runtime in minutes when return;
+	- split MPAA Rating on code and description;
+
 0.01  August  30 2005
 	- original version; created by h2xs 1.23
 

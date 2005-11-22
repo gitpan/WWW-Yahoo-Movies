@@ -6,7 +6,7 @@
 
 #########################
 
-use Test::More qw(no_plan);
+use Test::More tests => 5;
 BEGIN { use_ok('WWW::Yahoo::Movies') };
 
 #########################
@@ -16,6 +16,6 @@ BEGIN { use_ok('WWW::Yahoo::Movies') };
 
 my $ymovie = new WWW::Yahoo::Movies(id => 'Troy');
 isa_ok($ymovie, 'WWW::Yahoo::Movies');
-ok($ymovie->title eq 'Troy', 'Movie Title');
-ok($ymovie->year == 2004, 'Production Date');
-ok(scalar(@{$ymovie->matched}) == 10, 'Search Results');
+is($ymovie->title, 'Troy', 'Movie Title');
+is($ymovie->year, 2004, 'Production Date');
+is(scalar(@{$ymovie->matched}), 9, 'Search Results');

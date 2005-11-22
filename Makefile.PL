@@ -8,10 +8,10 @@ WriteMakefile(
     PREREQ_PM         => {
 		LWP::Simple			=> 1.41,
 		HTML::TokeParser	=> 2.30,
-		Carp				=> 1.03,
+		Carp				=> 0,
 	
 	}, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/WWW/Yahoo/Movies.pm', # retrieve abstract from module
-       AUTHOR         => 'Michael <misha@localdomain>') : ()),
+       AUTHOR         => 'Michael Stepanov <stepanov.michael@gmail.com>') : ()),
 );

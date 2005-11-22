@@ -20,6 +20,9 @@ use fields qw(
 	matched
 	error
 	error_msg
+	_proxy
+	_timeout
+	_user_agent
 	_page
 	_parser
 	_search
@@ -29,25 +32,36 @@ use fields qw(
 );
 
 BEGIN {
-	$VERSION = '0.01';
+	$VERSION = '0.02';
 }	
+
+use LWP::Simple qw(get $ua);
+use HTML::TokeParser;
+use Carp;
+
+use Data::Dumper;
 
 {
 	my $_class_def = {
 		error		=> 0,
 		error_msg	=> '',
-		_proxy 		=> $ENV{http_proxy},
+		mpaa_rating	=> [],
+		_timeout	=> 10,
+		_user_agent	=> 'Mozilla/5.0',
 		_server_url	=> 'http://movies.yahoo.com',
 		_movie_uri	=> '/shop?d=hv&cf=info&id=',
 		_search_uri	=> '/mv/search?type=feature&p=',
 	};
 
 	sub _class_def { $_class_def }
+	sub _get_default_val {
+		my $self = shift;
+		my $attr = shift;
+
+		return $_class_def->{$attr};
+	}
 }
 
-use LWP::Simple qw(get $ua);
-use HTML::TokeParser;
-use Carp;
 
 sub new {
 	my $class = shift;
@@ -61,12 +75,18 @@ sub _init {
 	my $self = shift;
 	my %params = @_;
 	
-	my $defs = $self->_class_def;
+	for my $prop(keys %FIELDS) {
+		my $attr = $prop;
+		$attr =~ s/^_//;
+		$self->{$prop} = exists $params{$attr} ? $params{$attr} 
+											: $self->_get_default_val($prop);	
+	}
 	
-	map { $self->{$_} = $defs->{$_}	} keys %$defs;
-	map { $self->{$_} = $params{$_} } keys %params;
-	
-	$ua->proxy(['http'], $self->proxy) if $self->proxy;
+	if($self->proxy) { $ua->proxy(['http'], $self->proxy) }
+	else { $ua->env_proxy }
+
+	$ua->agent($self->user_agent);
+	$ua->timeout($self->timeout);		
 	
 	$self->_get_page();
 	return if $self->error;
@@ -79,9 +99,9 @@ sub _get_page {
 
 	croak "Wrong paramter!" if $self->id !~ /\d+/ && $self->_search;
 	
-	$self->{_page} = get($self->_server_url.
-		($self->id =~ /\d+/ ? $self->_movie_uri : $self->_search_uri).
-			$self->id) || die "Cannot connect to the Yahoo: $!!";
+	my $url = $self->_server_url.($self->id =~ /\d+/ ? $self->_movie_uri : $self->_search_uri).$self->id;
+	
+	$self->{_page} = get($url) || die "Cannot connect to the Yahoo: $!!";
 	
 	unless($self->id =~ /\d+/) {
 		$self->_process_page();									
@@ -135,9 +155,20 @@ sub matched {
 
 sub proxy {
 	my $self = shift;
-	$self->{proxy} = shift if @_;
-	$self->{proxy} = $ENV{http_proxy} if !$self->{proxy} && $ENV{http_proxy};
-	return $self->{proxy};
+	if(@_) { $self->{_proxy} = shift }
+	return $self->{_proxy};
+}
+
+sub timeout {
+	my $self = shift;
+	if(@_) { $self->{_timeout} = shift }
+	return $self->{_timeout}
+}
+
+sub user_agent {
+	my $self = shift;
+	if(@_) { $self->{_user_agent} = shift }
+	return $self->{_user_agent}
 }
 
 sub parse_page {
@@ -175,23 +206,35 @@ sub _parse_details {
 	my $self = shift;
 	my $p = $self->_parser();
 	while($p->get_tag('b')) {
-		SWITCH: for($p->get_text) {
+		my $t;	
+		my $caption = $p->get_text;
+		
+		SWITCH: for($caption) {
 			/^Genres/ && do {
-				@{$self->{genres}} = split /\//, $p->get_trimmed_text('b', 'table');
+				$t = $p->get_trimmed_text('/tr');
+				$self->genres([split m#/#, $t]);
 				last SWITCH; };
 			/^Running Time/ && do {
-				$self->{runtime} = $p->get_trimmed_text('b', '/font');
+				$t = $p->get_trimmed_text('/tr');				
+				$self->runtime($self->_parse_runtime($t));
 				last SWITCH; };
 			/^Release Date/ && do {
-				($self->{release_date}) = $p->get_trimmed_text('b') =~ /(.+?)\s[.(]/;
+				$t = $p->get_trimmed_text('b');
+				my($mon, $day, $year) = $t =~ /(.+?)\s+(\d+)th,\s+(\d+)\s?[.(]/;
+				my $date = "$day $mon $year";
+				$self->release_date($date);
 				last SWITCH; };
 			/^MPAA Rating/ && do {
-				($self->{mpaa_rating}) = $p->get_trimmed_text('b', '/font') =~ /\s+(.+)/;
+				$t = $p->get_trimmed_text('/tr');
+				my($code, $descr) = $t =~ /(.+?)\s+(.+)/;
+				$self->mpaa_rating([$code, $descr]); 
 				last SWITCH; };
 			/^Distributor/ && do {
-				($self->{distributor}) = $p->get_trimmed_text('b', '/font') =~ /\s+(.+)/;
+				$t = $p->get_trimmed_text('/tr');
+				my($distr) = $t =~ /(.*)\./;
+				$self->distributor($distr);
 				last SWITCH; };				
-		}	
+		};
 	}	
 }
 
@@ -213,7 +256,6 @@ sub _parse_trailer {
 
 	while(my $tag = $p->get_tag('a')) {
 		if($tag->[1]{href} =~ /videoWin/i) {
-			#print "TEXT: [".$p->get_text."]\n";
 			$self->{trailer} = $tag->[1]{href};
 			last;
 		}
@@ -226,7 +268,6 @@ sub _parse_plot {
 
 	while(my $tag = $p->get_token()) {
 		if($tag->[0] eq 'C') {
-			#print "Comment is [$tag->[1]]\n";
 			last if $tag->[1] =~ /another vertical spacer/;
 		}	
 	}
@@ -235,20 +276,40 @@ sub _parse_plot {
 	$self->{plot_summary} = $p->get_trimmed_text('font', 'table');
 }
 
+sub _parse_runtime {
+	my($self, $time_str) = @_;
+	my $time = '';	
+	
+	if($time_str) {
+		my($hours, $min) = 
+				$time_str =~ m#(\d{0,2})(?:\s+hr\w?\.?)(?:\s+?)(\d{1,2})\s+min\.?#;
+		$time = $hours*60 + $min;
+	}
+
+	return $time;
+}
+
 sub AUTOLOAD {
 	my $self = shift;
 
 	my($class, $attr) = $AUTOLOAD =~ /(.*)::(.*)/; 
 
-	#print "\t[$class] -> [$attr] ...\n";
 	my($pack, $file, $line) = caller;
 	
 	if(exists $FIELDS{$attr}) {
 		$self->{$attr} = shift() if @_;
 		return $self->{$attr};
+	} else {	
+		carp "Method [$attr] not found in the class [$class]!\n Called from $pack at line $line";
 	}	
+}
+
+sub mpaa_rating {
+	my $self = shift;
 	
-	carp "Method [$attr] not found in the class [$class]!\n Called from $pack at line $line";
+	if($_[0] && ref($_[0]) eq 'ARRAY') { $self->{mpaa_rating} = shift }
+	
+	return wantarray ? @{ $self->{mpaa_rating} } : $self->{mpaa_rating}[0];
 }
 
 sub DESTROY {
@@ -336,9 +397,14 @@ Year of release of Yahoo! movie:
 
 =item mpaa_rating()
 
-MPAA rating of Yahoo! movie:
+MPAA rating of Yahoo! movie. In scalar context it returns MPAA code, in array context
+it returns array contained MPAA code and description.
 
-	my $mpaa = $ym->mpaa_rating();
+	my $mpaa_code = $ym->mpaa_rating();
+
+or
+
+	my($mpaa_code, $mpaa_descr) = $ym->mpaa_rating();
 
 For more information about MPAA rating please visit that page 
 http://www.mpaa.org/movieratings/
@@ -357,7 +423,7 @@ Release date of Yahoo! movie:
 
 =item runtime()
 
-Duration of Yahoo! movie:
+Returns a duration of Yahoo! movie in minutes:
 
 	my $runtime = $ym->runtime();
 
