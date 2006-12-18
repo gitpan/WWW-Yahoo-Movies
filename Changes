@@ -1,5 +1,10 @@
 Revision history for Perl extension WWW::Yahoo::Movies.
 
+0.03 December 18 2006
+	- added methods to get movie people list: cast, producers and directors;
+	- fixed a bug with processing movie information;
+	- added new tests.
+
 0.02 November 24 2005
 	- added possibility to specify a timeout for HTTP request;
 	- added possibility to specify an user agent for HTTP request;

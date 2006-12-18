@@ -18,4 +18,4 @@ my $ymovie = new WWW::Yahoo::Movies(id => 'Troy');
 isa_ok($ymovie, 'WWW::Yahoo::Movies');
 is($ymovie->title, 'Troy', 'Movie Title');
 is($ymovie->year, 2004, 'Production Date');
-is(scalar(@{$ymovie->matched}), 9, 'Search Results');
+cmp_ok(scalar(@{$ymovie->matched}), '>', 1, 'Search Results');

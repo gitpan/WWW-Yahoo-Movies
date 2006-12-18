@@ -1,6 +1,5 @@
 package WWW::Yahoo::Movies;
 
-use 5.008006;
 use strict;
 use warnings;
 
@@ -17,6 +16,7 @@ use fields qw(
 	runtime
 	genres
 	plot_summary
+	people
 	matched
 	error
 	error_msg
@@ -32,7 +32,7 @@ use fields qw(
 );
 
 BEGIN {
-	$VERSION = '0.02';
+	$VERSION = '0.03';
 }	
 
 use LWP::Simple qw(get $ua);
@@ -129,18 +129,24 @@ sub _process_page {
 	$parser->get_tag('table');
 	
 	while($tag = $parser->get_tag) {
-		if($tag->[0] eq 'a' && !$tag->[1]{class} && $tag->[1]{href} =~ /shop/) {
+		
+		if($tag->[0] eq 'a' && $tag->[1]{href} =~ m#/(\d+)/info#) {
 			$text = $parser->get_trimmed_text('a', 'br');
-			my($id) = $tag->[1]{href} =~ /id=(\d+)/;
+			my $id = $1;
 			$self->matched($id, $text);
-		}		
+		}
 	
 		last if $tag->[0] eq '/table';
 	}
 	
-	$self->id($self->matched->[0]{id});
-
-	$self->_get_page();
+	if($self->matched) {
+		$self->id($self->matched->[0]{id});
+		$self->_get_page();
+	} else {
+		$self->error_msg("Nothing matched!");
+		$self->error(1);
+		return;
+	}
 }
 
 sub matched {
@@ -184,9 +190,35 @@ sub parse_page {
 sub cover_file {
 	my $self = shift;
 	if($self->cover) {
-		my($file_name) = $self->cover =~ m#(?:.+)/(.+)$#;
+		my($file_name) = $self->cover =~ /(?:.+)\/(.+)$/;
 		return $file_name;
 	}	
+}
+
+sub mpaa_rating {
+	my $self = shift;
+	
+	if($_[0] && ref($_[0]) eq 'ARRAY') { $self->{mpaa_rating} = shift }
+	
+	return wantarray ? @{ $self->{mpaa_rating} } : $self->{mpaa_rating}[0];
+}
+
+sub directors {
+	my $self = shift;
+
+	return $self->{'people'}->{'directors'} if $self->{'people'};
+}
+
+sub producers {
+	my $self = shift;
+
+	return $self->{'people'}->{'producers'} if $self->{'people'};
+}
+
+sub cast {
+	my $self = shift;
+
+	return $self->{'people'}->{'cast'} if $self->{'people'};
 }
 
 sub _parser {
@@ -234,6 +266,9 @@ sub _parse_details {
 				my($distr) = $t =~ /(.*)\./;
 				$self->distributor($distr);
 				last SWITCH; };				
+			/^Cast and Credits$/ && do {
+				$self->_parse_people($p);
+				last SWITCH; };
 		};
 	}	
 }
@@ -289,27 +324,38 @@ sub _parse_runtime {
 	return $time;
 }
 
+sub _parse_people {
+	my($self, $p) = @_;
+		
+	my $key;
+	while(my $tag = $p->get_token) {
+		
+		if($tag->[1] eq 'font') {
+			my $text = $p->get_text();
+
+			if($text eq 'Starring:') { $key = 'cast' } 
+			elsif($text eq 'Directed by:') { $key = 'directors' } 
+			elsif($text eq 'Produced by:') { $key = 'producers' }
+		}	
+
+		if($tag->[0] eq 'S' && $tag->[1] eq 'a') {
+			if($tag->[2]{href} =~ /shop\?d\=hc\&id\=(\d+)\&cf\=gen/ && $key) {
+				push @{ $self->{'people'}->{$key} }, [$1, $p->get_text];			
+			}	
+		}
+	}
+}
+
 sub AUTOLOAD {
 	my $self = shift;
-
 	my($class, $attr) = $AUTOLOAD =~ /(.*)::(.*)/; 
-
 	my($pack, $file, $line) = caller;
-	
 	if(exists $FIELDS{$attr}) {
 		$self->{$attr} = shift() if @_;
 		return $self->{$attr};
 	} else {	
 		carp "Method [$attr] not found in the class [$class]!\n Called from $pack at line $line";
 	}	
-}
-
-sub mpaa_rating {
-	my $self = shift;
-	
-	if($_[0] && ref($_[0]) eq 'ARRAY') { $self->{mpaa_rating} = shift }
-	
-	return wantarray ? @{ $self->{mpaa_rating} } : $self->{mpaa_rating}[0];
 }
 
 sub DESTROY {
@@ -447,6 +493,51 @@ List of mathed Yahoo! movies in case of search by movie's title. It returns
 an array reference with hashes in the form of id => title:
 
 	map { print "ID: $_->{id}; title: $_->{title}\n" } @{ $ym->matched();
+
+=item people()
+
+Return a hash with following keys - director, producer and cast, which correspond on array
+with Yahoo Person ID and person full name:
+
+	my $people = $ymovie->people();
+
+	for(keys %$people) {
+		print "Category $_ \n";
+		for(@{$person->{$_}}) {
+			print "$_->[0]: $_->[2] ...\n";
+		}
+	}
+
+=item cast()
+
+Return a list of movie cast like pair: Yahoo Person ID, person name:
+	
+	my $cast = $ymovie->cast;
+
+	for(@$cast) {
+		print "$_->[0]: $_->[1]\n";
+	}
+
+=item producers()
+
+Return a list of movie producers like pair: Yahoo Person ID, person name:
+	
+	my $producers = $ymovie->producers;
+
+	for(@$producer) {
+		print "$_->[0]: $_->[1]\n";
+	}
+
+=item directors()
+
+Return a list of movie directors like pair: Yahoo Person ID, person name:
+	
+	my $directors = $ymovie->directors;
+
+	for(@$directors) {
+		print "$_->[0]: $_->[1]\n";
+	}
+
 
 =back
 
