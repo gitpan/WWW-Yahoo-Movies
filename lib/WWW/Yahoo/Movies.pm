@@ -32,7 +32,7 @@ use fields qw(
 );
 
 BEGIN {
-	$VERSION = '0.03';
+	$VERSION = '0.04';
 }	
 
 use LWP::Simple qw(get $ua);
@@ -97,13 +97,13 @@ sub _init {
 sub _get_page {
 	my $self = shift;
 
-	croak "Wrong paramter!" if $self->id !~ /\d+/ && $self->_search;
+	croak "Wrong paramter!" if $self->id !~ /^\d+$/ && $self->_search;
 	
-	my $url = $self->_server_url.($self->id =~ /\d+/ ? $self->_movie_uri : $self->_search_uri).$self->id;
-	
+	my $url = $self->_server_url.($self->id =~ /^\d+$/ && length($self->id) > 4 ? $self->_movie_uri : $self->_search_uri).$self->id;
+
 	$self->{_page} = get($url) || die "Cannot connect to the Yahoo: $!!";
 	
-	unless($self->id =~ /\d+/) {
+	unless($self->id =~ /^\d+$/ && length($self->id) > 4) {
 		$self->_process_page();									
 		$self->_search(1);
 	}	
@@ -138,7 +138,7 @@ sub _process_page {
 	
 		last if $tag->[0] eq '/table';
 	}
-	
+
 	if($self->matched) {
 		$self->id($self->matched->[0]{id});
 		$self->_get_page();
@@ -252,7 +252,7 @@ sub _parse_details {
 				last SWITCH; };
 			/^Release Date/ && do {
 				$t = $p->get_trimmed_text('b');
-				my($mon, $day, $year) = $t =~ /(.+?)\s+(\d+)th,\s+(\d+)\s?[.(]/;
+				my($mon, $day, $year) = $t =~ /(.+?)\s+(\d+)(?:th|sd|st)?,\s+(\d+)\s?(?:[.(])?/;
 				my $date = "$day $mon $year";
 				$self->release_date($date);
 				last SWITCH; };
