@@ -1,5 +1,8 @@
 Revision history for Perl extension WWW::Yahoo::Movies.
 
+0.05 Dec 27 2007
+	- fixed a logic of parsing of cast info (thanks to David Sullivan for his patch).
+
 0.04 May 25 2007
 	- fixed a parsing a movie title which contains some digits (thanks to Jesper Nøhr
 		for his bugreport);

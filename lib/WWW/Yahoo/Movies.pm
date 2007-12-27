@@ -32,7 +32,7 @@ use fields qw(
 );
 
 BEGIN {
-	$VERSION = '0.04';
+	$VERSION = '0.05';
 }	
 
 use LWP::Simple qw(get $ua);
@@ -185,6 +185,7 @@ sub parse_page {
 	$self->_parse_cover();
 	$self->_parse_trailer();
 	$self->_parse_plot();
+	$self->_parse_people();
 }
 
 sub cover_file {
@@ -266,9 +267,6 @@ sub _parse_details {
 				my($distr) = $t =~ /(.*)\./;
 				$self->distributor($distr);
 				last SWITCH; };				
-			/^Cast and Credits$/ && do {
-				$self->_parse_people($p);
-				last SWITCH; };
 		};
 	}	
 }
@@ -325,9 +323,15 @@ sub _parse_runtime {
 }
 
 sub _parse_people {
-	my($self, $p) = @_;
+	my($self) = @_;
+    
+	my $p = $self->_parser();
 		
 	my $key;
+    while(my $tag = $p->get_token()) {
+        last if $tag->[0] eq 'C' && $tag->[1] =~ /cast and credits/;
+    }
+
 	while(my $tag = $p->get_token) {
 		
 		if($tag->[1] eq 'font') {
@@ -339,7 +343,7 @@ sub _parse_people {
 		}	
 
 		if($tag->[0] eq 'S' && $tag->[1] eq 'a') {
-			if($tag->[2]{href} =~ /shop\?d\=hc\&id\=(\d+)\&cf\=gen/ && $key) {
+            if($tag->[2]{href} =~ /movie\/contributor\/(\d+)/ && $key) {
 				push @{ $self->{'people'}->{$key} }, [$1, $p->get_text];			
 			}	
 		}
